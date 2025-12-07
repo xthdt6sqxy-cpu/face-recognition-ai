@@ -1,0 +1,30 @@
+import cv2
+import os
+import numpy as np
+from PIL import Image
+
+ruta = "dataset"
+model = cv2.face.LBPHFaceRecognizer_create()
+
+rostros = []
+etiquetas = []
+etiqueta_actual = 0
+nombres = {}
+
+for nombre in os.listdir(ruta):
+    carpeta = os.path.join(ruta, nombre)
+    nombres[etiqueta_actual] = nombre
+
+    for archivo in os.listdir(carpeta):
+        imagen_ruta = os.path.join(carpeta, archivo)
+        imagen = Image.open(imagen_ruta).convert('L')
+        imagen_np = np.array(imagen, 'uint8')
+        rostros.append(imagen_np)
+        etiquetas.append(etiqueta_actual)
+
+    etiqueta_actual += 1
+
+model.train(rostros, np.array(etiquetas))
+model.save("trainer/model.yml")
+
+print("Modelo entrenado correctamente")
