@@ -1,0 +1,64 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+
+st.title("Dashboard de Detección Facial (desde TXT)")
+
+# Función para cargar datos desde TXT
+@st.cache_data
+def load_data_txt(file_path="locks.txt"):
+    data = []
+    with open(file_path, "r") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    name, date_str, time_str = line.split(",")
+                    timestamp = pd.to_datetime(f"{date_str} {time_str}")
+                    data.append({"name": name, "timestamp": timestamp})
+                except:
+                    st.warning(f"Línea inválida ignorada: {line}")
+    df = pd.DataFrame(data)
+    return df
+
+df = load_data_txt()
+
+# Tabla completa de eventos
+st.subheader("Eventos Registrados")
+st.dataframe(df)
+
+# Última detección
+if not df.empty:
+    last_detection = df['timestamp'].max()
+    st.subheader("Última detección")
+    st.metric("Última vez detectado", last_detection)
+
+# Detecciones por hora
+st.subheader("Detecciones por Hora")
+df['hour'] = df['timestamp'].dt.hour
+hour_counts = df.groupby('hour').size().reset_index(name='count')
+fig_hour = px.bar(hour_counts, x='hour', y='count', labels={'hour':'Hora','count':'Cantidad'})
+st.plotly_chart(fig_hour)
+
+# Detecciones por día
+st.subheader("Detecciones por Día")
+df['date'] = df['timestamp'].dt.date
+day_counts = df.groupby('date').size().reset_index(name='count')
+fig_day = px.line(day_counts, x='date', y='count', labels={'date':'Fecha','count':'Cantidad'})
+st.plotly_chart(fig_day)
+
+# Filtro por rango de fechas
+st.subheader("Filtrar por rango de fechas")
+if not df.empty:
+    start_date = st.date_input("Fecha inicio", df['date'].min())
+    end_date = st.date_input("Fecha fin", df['date'].max())
+    mask = (df['date'] >= start_date) & (df['date'] <= end_date)
+    filtered_df = df.loc[mask]
+    st.dataframe(filtered_df)
+
+# Filtro por persona
+st.subheader("Filtrar por persona")
+names = df['name'].unique()
+selected_name = st.selectbox("Selecciona la persona", names)
+filtered_by_name = df[df['name'] == selected_name]
+st.dataframe(filtered_by_name)
