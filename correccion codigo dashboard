@@ -1,0 +1,10 @@
+# DESPUÉS
+parts = line.split(",")
+if len(parts) >= 3:
+    name = ",".join(parts[:-2])  # todo lo que está antes de los últimos 2 elementos
+    date_str = parts[-2]
+    time_str = parts[-1]
+    timestamp = pd.to_datetime(f"{date_str} {time_str}")
+    data.append({"name": name, "timestamp": timestamp})
+else:
+    st.warning(f"Línea inválida ignorada: {line}")
