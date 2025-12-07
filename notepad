@@ -1,0 +1,4 @@
+cd Desktop
+mkdir face-recognition-ai
+cd face-recognition-ai
+notepad detectar_rostros.py
