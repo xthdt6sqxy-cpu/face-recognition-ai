@@ -1,0 +1,33 @@
+import cv2
+import os
+
+nombre = input("Escribe tu nombre: ")
+
+cap = cv2.VideoCapture(0)
+
+ruta = "rostros"
+if not os.path.exists(ruta):
+    os.makedirs(ruta)
+
+contador = 0
+
+while True:
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    cv2.imshow("Presiona S para guardar rostro", frame)
+
+    tecla = cv2.waitKey(1)
+
+    if tecla == ord("s"):
+        archivo = f"{ruta}/{nombre}_{contador}.jpg"
+        cv2.imwrite(archivo, frame)
+        print("Foto guardada:", archivo)
+        contador += 1
+
+    elif tecla == ord("q"):
+        break
+
+cap.release()
+cv2.destroyAllWindows()
