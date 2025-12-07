@@ -1,0 +1,145 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from streamlit_autorefresh import st_autorefresh
+from datetime import datetime
+import os
+
+# ==========================
+# ⚙️ CONFIGURACIÓN GENERAL
+# ==========================
+st.set_page_config(page_title="Dashboard de Seguridad Facial", layout="wide")
+st.title("🛡️ Dashboard de Seguridad Facial - LAB PRO")
+
+LOCKS_FILE = "locks.txt"
+REFRESH_INTERVAL = 3000  # ms
+DEFAULT_ALERT_SECONDS = 30
+
+st_autorefresh(interval=REFRESH_INTERVAL, key="refresh")
+
+# ==========================
+# 🔎 DIAGNÓSTICO DEL ARCHIVO
+# ==========================
+st.sidebar.subheader("📂 Diagnóstico del sistema")
+
+if os.path.exists(LOCKS_FILE):
+    st.sidebar.success("✅ locks.txt encontrado")
+    with open(LOCKS_FILE, "r", encoding="utf-8", errors="ignore") as f:
+        raw_lines = f.readlines()
+    st.sidebar.write(f"📄 Total de líneas: {len(raw_lines)}")
+    st.sidebar.write("📌 Primeras 5 líneas:")
+    for l in raw_lines[:5]:
+        st.sidebar.code(l)
+else:
+    st.sidebar.error("❌ ERROR: locks.txt NO está en esta carpeta")
+
+# ==========================
+# 📥 LECTOR SEGURO DE LOGS
+# ==========================
+def load_data_txt(file_path=LOCKS_FILE):
+    data = []
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+
+                if " - " in line:
+                    name_part, datetime_part = line.split(" - ", 1)
+                    timestamp = pd.to_datetime(datetime_part.strip(), errors="coerce")
+
+                    if pd.isna(timestamp):
+                        continue
+
+                    data.append({
+                        "name": name_part.strip(),
+                        "timestamp": timestamp
+                    })
+    except:
+        pass
+
+    return pd.DataFrame(data)
+
+# ==========================
+# 📊 DATAFRAME PRINCIPAL
+# ==========================
+df = load_data_txt()
+
+# ✅ ORDEN FORZADO POR TIEMPO REAL (TU PETICIÓN)
+if not df.empty:
+    df = df.sort_values(by="timestamp", ascending=False)
+    df = df.reset_index(drop=True)
+
+st.subheader("📋 Registros de detecciones")
+st.write(f"Registros válidos cargados: {len(df)}")
+st.dataframe(df, use_container_width=True)
+
+# ==========================
+# ⏱️ ÚLTIMA DETECCIÓN GLOBAL
+# ==========================
+if not df.empty:
+    last_detection = df["timestamp"].max()
+    st.metric("🕒 Última detección global", last_detection)
+
+# ==========================
+# 📊 GRÁFICOS GENERALES
+# ==========================
+if not df.empty:
+    df["hour"] = df["timestamp"].dt.hour
+    df["date"] = df["timestamp"].dt.date
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        hour_counts = df.groupby("hour").size().reset_index(name="count")
+        fig_hour = px.bar(hour_counts, x="hour", y="count", title="Detecciones por Hora")
+        st.plotly_chart(fig_hour, use_container_width=True)
+
+    with col2:
+        day_counts = df.groupby("date").size().reset_index(name="count")
+        fig_day = px.line(day_counts, x="date", y="count", title="Detecciones por Día")
+        st.plotly_chart(fig_day, use_container_width=True)
+
+# ==========================
+# 🚨 SEMÁFORO MULTI PERSONA
+# ==========================
+st.subheader("🚦 Estado de Seguridad por Persona")
+
+if not df.empty:
+    now = pd.Timestamp(datetime.now())
+
+    for name in df["name"].unique():
+        last_time = df[df["name"] == name]["timestamp"].max()
+        diff_seconds = (now - last_time).total_seconds()
+
+        if diff_seconds <= DEFAULT_ALERT_SECONDS:
+            st.markdown(f"<h2 style='color:red'>🔴 {name} DETECTADO HACE {int(diff_seconds)}s</h2>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<h2 style='color:green'>🟢 {name} SEGURO ({int(diff_seconds)}s)</h2>", unsafe_allow_html=True)
+else:
+    st.warning("⚠️ Aún no hay detecciones registradas")
+
+# ==========================
+# 🔎 ANÁLISIS INDIVIDUAL
+# ==========================
+if not df.empty:
+    st.subheader("🧍 Análisis por Persona")
+    selected_name = st.selectbox("Selecciona persona", df["name"].unique())
+
+    filtered_df = df[df["name"] == selected_name]
+    st.dataframe(filtered_df, use_container_width=True)
+
+    if not filtered_df.empty:
+        filtered_df["hour"] = filtered_df["timestamp"].dt.hour
+        filtered_df["date"] = filtered_df["timestamp"].dt.date
+
+        col3, col4 = st.columns(2)
+
+        with col3:
+            hour_counts_p = filtered_df.groupby("hour").size().reset_index(name="count")
+            fig_h_p = px.bar(hour_counts_p, x="hour", y="count", title=f"{selected_name} por Hora")
+            st.plotly_chart(fig_h_p, use_container_width=True)
+
+        with col4:
+            day_counts_p = filtered_df.groupby("date").size().reset_index(name="count")
+            fig_d_p = px.line(day_counts_p, x="date", y="count", title=f"{selected_name} por Día")
+            st.plotly_chart(fig_d_p, use_container_width=True)
