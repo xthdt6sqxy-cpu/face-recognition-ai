@@ -1,0 +1,109 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from streamlit_autorefresh import st_autorefresh
+from datetime import datetime
+
+st.set_page_config(page_title="Dashboard de Seguridad Facial", layout="wide")
+st.title("Dashboard de Seguridad Facial - PRO")
+
+LOCKS_FILE = "locks.txt"
+REFRESH_INTERVAL = 3000  # ms
+DEFAULT_ALERT_SECONDS = 30  # tiempo por defecto para semáforo
+
+# Auto refresco
+st_autorefresh(interval=REFRESH_INTERVAL, key="datarefresh")
+
+# Función para cargar datos desde TXT
+def load_data_txt(file_path=LOCKS_FILE):
+    data = []
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and " - " in line:
+                    name_part, datetime_part = line.split(" - ", 1)
+                    try:
+                        timestamp = pd.to_datetime(datetime_part.strip(), errors='coerce')
+                        if pd.isna(timestamp):
+                            st.warning(f"Fecha inválida ignorada: {line}")
+                            continue
+                        data.append({"name": name_part.strip(), "timestamp": timestamp})
+                    except Exception as e:
+                        st.warning(f"Error leyendo línea: {line} ({e})")
+                else:
+                    st.warning(f"Línea inválida ignorada: {line}")
+    except FileNotFoundError:
+        st.warning(f"Archivo no encontrado: {file_path}")
+    return pd.DataFrame(data)
+
+# Cargar datos
+df = load_data_txt()
+
+# Configuración de alertas individuales
+st.sidebar.header("Configuración de alertas")
+alert_seconds_dict = {}
+if not df.empty:
+    for name in df['name'].unique():
+        alert_sec = st.sidebar.number_input(f"Segundos de alerta para {name}", min_value=5, max_value=3600, value=DEFAULT_ALERT_SECONDS)
+        alert_seconds_dict[name] = alert_sec
+
+# Tabla general
+st.subheader("Eventos Registrados")
+st.dataframe(df)
+
+# Última detección global
+if not df.empty:
+    last_detection = df['timestamp'].max()
+    st.subheader("Última detección global")
+    st.metric("Última vez detectado", last_detection)
+
+# Gráficos generales
+if not df.empty:
+    # Por hora
+    st.subheader("Detecciones por Hora")
+    df['hour'] = df['timestamp'].dt.hour
+    hour_counts = df.groupby('hour').size().reset_index(name='count')
+    fig_hour = px.bar(hour_counts, x='hour', y='count', labels={'hour':'Hora','count':'Cantidad'}, title="Detecciones por Hora")
+    st.plotly_chart(fig_hour, use_container_width=True)
+
+    # Por día
+    st.subheader("Detecciones por Día")
+    df['date'] = df['timestamp'].dt.date
+    day_counts = df.groupby('date').size().reset_index(name='count')
+    fig_day = px.line(day_counts, x='date', y='count', labels={'date':'Fecha','count':'Cantidad'}, title="Detecciones por Día")
+    st.plotly_chart(fig_day, use_container_width=True)
+
+# Semáforo por persona con alerta visual
+if not df.empty:
+    st.subheader("Alertas por Persona")
+    now = pd.Timestamp(datetime.now())
+    for name in df['name'].unique():
+        last_time = df[df['name'] == name]['timestamp'].max()
+        alert_sec = alert_seconds_dict.get(name, DEFAULT_ALERT_SECONDS)
+        diff_seconds = (now - last_time).total_seconds()
+        if diff_seconds <= alert_sec:
+            st.markdown(f"<h2 style='color:red'>🔴 {name}: Detectado en los últimos {int(diff_seconds)} segundos!</h2>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<h2 style='color:green'>🟢 {name}: Última detección hace {int(diff_seconds)} segundos</h2>", unsafe_allow_html=True)
+
+# Filtro interactivo opcional
+if not df.empty:
+    st.subheader("Filtrar por persona")
+    selected_name = st.selectbox("Selecciona la persona", df['name'].unique())
+    filtered_df = df[df['name'] == selected_name]
+    st.dataframe(filtered_df)
+    
+    # Gráficos por persona
+    st.subheader(f"Gráficos de {selected_name}")
+    # Por hora
+    filtered_df['hour'] = filtered_df['timestamp'].dt.hour
+    hour_counts = filtered_df.groupby('hour').size().reset_index(name='count')
+    fig_hour_person = px.bar(hour_counts, x='hour', y='count', labels={'hour':'Hora','count':'Cantidad'}, title=f"Detecciones por Hora - {selected_name}")
+    st.plotly_chart(fig_hour_person, use_container_width=True)
+
+    # Por día
+    filtered_df['date'] = filtered_df['timestamp'].dt.date
+    day_counts = filtered_df.groupby('date').size().reset_index(name='count')
+    fig_day_person = px.line(day_counts, x='date', y='count', labels={'date':'Fecha','count':'Cantidad'}, title=f"Detecciones por Día - {selected_name}")
+    st.plotly_chart(fig_day_person, use_container_width=True)
